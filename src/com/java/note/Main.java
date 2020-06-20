@@ -1,4 +1,4 @@
-package com.oxuo.java.note;
+package com.java.note;
 
 import java.util.ArrayList;
 import java.util.Iterator;

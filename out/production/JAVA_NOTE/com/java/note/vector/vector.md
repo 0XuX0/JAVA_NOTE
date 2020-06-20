@@ -16,4 +16,5 @@ synchronized void setSize(int newSize);//若newSize大于当前size则扩容 反
 Enumeration<E> elements();// return an enumeration of the components of this vector
 synchronized void removeElementAt(int index);//删除指定位置元素，index后面的元素向前挪一个单位
 synchronized void insertElementAt(int index);//index后面的元素向后挪一个单位，指定位置添加元素
+synchronized List<E> subList(int fromIndex, int toIndex);//性质与ArrayList相同
 ```

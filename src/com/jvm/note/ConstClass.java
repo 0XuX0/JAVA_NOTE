@@ -1,4 +1,4 @@
-package com.oxuxo.jvm.note;
+package com.jvm.note;
 
 /**
  * @ClassName ConstClass
