@@ -398,7 +398,69 @@ final Node<K,V> getNode(int hash, Object key) {
 }
 ```
 
+### Remove  过程
 
+#### remove 函数
+
+计算 key 的哈希值 调用 removeNode 方法
+
+```java
+public V remove(Object key) {
+    Node<K,V> e;
+    return (e = removeNode(hash(key), key, null, false, true)) == null ? null : e.value;
+}
+```
+
+### removeNode 函数
+
+```java
+// @param value : the value to match if matchValue, else ignored
+// @param matchValue : if true only remove if value is equal
+// @param movable : if false do not move other nodes while removing
+final Node<K,V> removeNode(int hash, Object key, Object value, boolean matchValue, boolean) {
+    Node<K,V>[] tab; Node<K,V> p; int n, index;
+    // 根据 hash 计算桶的位置
+    if ((tab = table) != null && (n = tab.length) > 0 && (p = tab[index = (n - 1) & hash]) != null) {
+        // 判断桶的第一个节点是否是目标节点
+        if(p.hash == hash && ((k = p.key) == key || (key != null && key.equals(k))))
+            node = p;
+        // 若桶的第一个节点有后继节点
+        else if ((e = p.next) != null) {
+            // 若为红黑树结构 调用 getTreeNode 方法
+            if (p instanceof TreeNode)
+                node = ((TreeNode<K,V>)p).getTreeNode(hash, key);
+            // 单链表结构
+            else {
+                // 遍历往后寻找
+                do {
+                    if (e.hash == hash && 
+                        ((k = e.key) == key || (key != null && key.equals(k)))) {
+                        node = e;
+                        break;
+                    }
+                    p = e;
+                } while ((e = e.next) != null);
+            }
+        }
+        // 已寻找到目标节点，开始remove...
+        if (node != null && (!matchValue || (v = node.value) == value ||
+                            (value != null && value.equals(v)))) {
+            // 若为红黑树节点 调用 removeTreeNode 方法
+            if (node instanceof TreeNode)
+                ((TreeNode<K,V>)node).removeTreeNode(this, tab, movable);
+            // 若为桶的第一个元素，把桶的第二个元素放至首位
+            else if (node == p)
+                tab[index] = node.next;
+            else 
+                p.next = node.next;
+            ++modCount;
+            --size;
+            afterNodeRemoval(node);
+            return node;
+        }
+    }
+}
+```
 
 ### 常见面试题
 
@@ -443,3 +505,312 @@ final Node<K,V> getNode(int hash, Object key) {
 7. HashMap 线程安全的实现有哪些
 
    ConcurrentHashMap Collections.synchronizedMap
+
+### 红黑树 源码分析
+
+#### putTreeVal 函数
+
+```java
+final TreeNode<K,V> putTreeVal(HashMap<K,V> map, Node<K,V>[] tab, int h, K k, V v) {
+    Class<?> kc = null;
+    boolean searched = false;
+    TreeNode<K,V> root = (parent != null) ? root() : this;//迭代向上寻找根节点
+    for (TreeNode<K,V> p = root;;) {
+        int dir, ph; K pk;
+        // 根据 hash 值 判断方向
+        if ((ph = p.hash) > h)
+            // 大于 放左侧
+            dir = -1;
+        else if (ph < h) {
+            // 小于 放右侧
+            dir = 1;
+        }
+        // 如果 key 相同 返回
+        else if ((pk = p.key) == k || (k != null && k.equals(pk)))
+            return p;
+        // hash 相同 但是 key 不相同
+        // 没有实现 Comparable<C>接口 或者 实现该接口并且 k 与 pk Comparable比较结果相同
+        else if ((kc == null && 
+                 (kc = comparableClassFor(k)) == null) || 
+                (dir = compareComparables(kc, k , pk)) == 0) {
+            // 在左右子树递归寻找 hash key 相同的节点
+            // 第二次迭代时就无需进入以下代码区域
+            if (!search) {
+                TreeNode<K,V> q, ch;
+                searched = true;
+                if (((ch = p.left) != null &&
+                    (q = ch.find(h, k, kc)) != null) ||
+                   ((ch = p.right) != null &&
+                   (q = ch.find(h, k, kc)) != null))
+                    return q;
+            }
+            // 没找到则需要进行插入操作
+            // 通过hashCode 判断 插入方向
+            dir = tieBreakOrder(k, pk);
+        }
+        
+        //下面进行节点插入
+        // xp 保存当前节点
+        TreeNode<K,V> xp = p;
+        // 结合外层for 循环 找到插入的位置
+        if ((p = (dir <= 0) ? p.left : p.right) == null) {
+            Node<K,V> xpn = xp.next;
+            // 创建一个新节点
+            TreeNode<K,V> x = map.newTreeNode(h, k, v, xpn);
+            if (dir <= 0)
+                xp.left = x;
+            else
+                xp.right = x;
+            // 维护双链表的指针关系
+            xp.next = x;
+            x.parent = x.prev = xp;
+            if (xpn != null) 
+                ((TreeNode<K,V>)xpn).prev = x;
+            //将root移到table数组的i位置的第一个节点
+            // 红黑树进行插入操作后，重新调整平衡
+            moveRootToFront(tab, balanceInsertion(root, x));
+            return null;
+        }
+    }
+    
+}
+```
+
+### treeifyBin 函数
+
+```java
+final void treeifyBin(Node<K,V>[] tab, int hash) {
+    int n, index; Node<K,V> e;
+    // 如果桶的数量小于 最小树化容量 则只进行扩容
+    if (tab == null || (n = tab.length) < MIN_TREEIFY_CAPACITY)
+        resize();
+    // 根据hash计算需要树化的目标桶的位置
+    else if ((e = tab[index = (n - 1) & hash]) != null) {
+        TreeNode<K,V> hd = null, tl = null;
+        do {
+            // 构造红黑树节点
+            TreeNode<K,V> p = replacementTreeNode(e, null);
+            // 设置双链表头结点
+            if (tl == null) 
+                hd = p;
+            else {
+                // 设置双链表非头节点
+                p.prev = tl;
+                tl.next = p;
+            }
+            tl = p;
+        } while ((e = e.next) != null);
+        // 将双链表头部 treeNode 设置到桶的首位 调用 teeify 进行树化
+        if ((tab[index] = hd) != null)
+            hd.treeify(tab);
+    }
+}
+```
+
+### treeify 函数
+
+```java
+final void treeify(Node<K,V>[] tab) {
+    TreeNode<K,V> root = null;
+    // 遍历链表，x 指向当前节点
+    for (TreeNode<K,V> x = this, next; x != null; x = next) {
+        next = (TreeNode<K,V>)x.next; // next 指向 下一个节点
+        x.left = x.right = null;
+        // 初始化 红黑树根节点
+        if (root == null) {
+            x.parent = null;
+            x.red = false;
+            root = x;
+        }
+        else {
+            K k = x.key;
+            int h = x.hash;
+            Class<?> kc = null;
+            for (TreeNode<K,V> p = root;;) {
+                int dir, ph;
+                K pk = p.key;
+                // 树节点hash值大于链表节点hash值 当前链表节点会放到左子树
+                if ((ph = p.hash) > h)
+                    dir = -1;
+                // 树节点hash值小于链表节点hash值 当前链表节点会放到右子树
+                else if (ph < h)
+                    dir = 1;
+                // hash值相同
+                // 没有实现 Comparable<C>接口 或者 
+                // 实现该接口并且 k 与 pk Comparable比较结果相同
+                else if ((kc == null &&
+                         (kc = comparableClassFor(k)) == null) ||
+                        (dir = compareComparables(kc, k, pk)) == 0)
+                    dir = tieBreakOrder(k, pk);
+                
+                TreeNode<K,V> xp = p;
+                // 迭代寻找目标节点应插入的位置
+                if ((p = (dir <= 0) ? p.left : p.right) == null) {
+                    x.parent = xp;
+                    if (dir <= 0)
+                        xp.left = x;
+                    else
+                        xp.right = x;
+                    // 重新平衡
+                    root = balanceInsertion(root, x);
+                    break;
+                }
+            }
+        }
+    }
+    // 将所有链表节点都遍历完后，最终构造出的树可能经过过个平衡操作，根节点对应目前链表的哪一个节点是不确定的，将树的根节点移动至桶的第一个元素处
+    moveRootToFront(tab, root);
+}
+```
+
+### split 函数
+
+```java
+final void split(HashMap<K,V> map, Node<K,V>[] tab, int index, int bit) {
+    TreeNode<K,V> b = this;
+    TreeNode<K,V> loHead = null, loTail = null;
+    TreeNode<K,V> hiHead = null, hiTail = null;
+    int lc = 0, hc = 0;
+    // 遍历双链表
+    for (TreeNode<K,V> e = b, next; e != null; e = next) {
+        next = (TreeNode<K,V>)e.next;
+        e.next = null;
+        // 桶位置不变
+        if ((e.hash & bit) == 0) {
+            if ((e.prev = loTail) == null)
+                loHead = e;
+            else
+                loTail.next = e;
+            loTail = e;
+            ++lc;
+        }
+        // 桶位置移动 偏移量为oldCap
+        else {
+            if ((e.prev = loTail) == null)
+                hiHead = e;
+            else 
+                hiTail.next = e;
+            hiTail = e;
+            ++hc;
+        }
+    }
+    
+    // 判断UNTREEIFY_THRESHOLD阈值 决定是重新树化还是退化
+    if (loHead != null) {
+        if (lc <= UNTREEIFY_THRESHOLD)
+            tab[index] = loHead.untreeify(map);
+        else {
+            tab[index] = loHead;
+            if (hiHead != null) 
+                loHead.treeify(tab);
+        }
+    }
+    if (hiHead != null) {
+        if (hc <= UNTREEIFY_THRESHOLD)
+            tab[index + bit] = hiHead.untreeify(map);
+        else {
+            tab[index + bit] = hiHead;
+            if (loHead != null)
+                hiHead.treeify(tab);
+        }
+    }
+}
+```
+
+### untreeify 函数
+
+```java
+final Node<K,V> untreeify(HashMap<K,V> map) {
+    Node<K,V> hd = null, tl = null;
+    for (Node<K,V> q = this; q != null; q = q.next) {
+        Node<K,V> p = map.replacementNode(q, null);
+        if (tl == null)
+            hd = p;
+        else
+            tl.next = p;
+        tl = p;
+    }
+    return hd;
+}
+```
+
+### getTreeNode 函数
+
+```java
+final TreeNode<K,V> getTreeNode(int h, Object k) {
+    // 找到根节点，然后调用 find 函数
+    return ((parent != null) ? root() : this).find(h, k, null);
+}
+```
+
+### find 函数
+
+```java
+final TreeNode<K,V> find(int h, Object k, Class<?> kc) {
+    TreeNode<K,V> p = this;
+    do {
+        int ph, dir; K pk;
+        TreeNode<K,V> pl = p.left, pr = p.right, q;
+        // 当前节点 hash 值 大于 目标 hash 值，进入左子树查找
+        if ((ph = p.hash) > h)
+            p = pl;
+        // 当前节点 hash 值 小于 目标 hash 值，进入右子树查找
+        else if (ph < h)
+            p = pr;
+        // hash 值相等，且key值也相同 返回
+        else if ((pk = p.key) == k || (k != null && k.equals(pk)))
+            return p;
+        
+        // hash 值相同 但 key 不相同
+        
+        // 若左孩子为空 进入右子树
+        else if (pl == null)
+            p = pr;
+        // 若右孩子为空 进入左子树
+        else if (pr == null)
+            p = pl;
+        // 若左右孩子都不为空，通过comparable方法比较 key 大小
+        else if ((kc != null ||
+                  (kc = comparableClassFor(k)) != null) &&
+                 (dir = compareComparables(kc, k, pk)) != 0)
+            p = (dir < 0) ? pl : pr;
+        // 无法通过comparable 比较或比较结果仍然一致，从右孩子节点递归查找
+        else if ((q = pr.find(h, k, kc)) != null)
+            return q;
+        // 否则进入左孩子节点继续查找
+        else
+            p = pl;
+    } while (p != null);
+    return null;
+}
+```
+
+### moveRootToFront 函数
+
+```java
+static <K,V> void moveRootToFront(Node<K,V>[] tab, TreeNode<K,V> root) {
+    int n;
+    if (root != null && tab != null && (n = tab.length) > 0) {
+        // 定位到桶的第一个位置
+        int index = (n - 1) & root.hash;
+        TreeNode<K,V> first = (TreeNode<K,V>)tab[index];
+        if (root != first) {
+            Node<K,V> rn;
+            tab[index] = root;// 将root放到桶的第一个位置
+            TreeNode<K,V> rp = root.prev;//找到root在双链表中的前继节点
+            if ((rn = root.next) != null)//找到root在双链表中的后继节点
+                ((TreeNode<K,V>)rn).prev = rp;//将root从双链表中移除 prev 指针
+            if (rp != null)
+                rp.next = rn;//将root从双链表中移除 next 指针
+            if (first != null)
+                first.prev = root;//将root移动至原first的前边
+            root.next = first;//更新root的next指针
+            root.prev = null;//更新root的prev指针
+        }
+        assert checkInvariants(root);
+    }
+}
+```
+
+
+
