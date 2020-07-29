@@ -462,50 +462,6 @@ final Node<K,V> removeNode(int hash, Object key, Object value, boolean matchValu
 }
 ```
 
-### 常见面试题
-
-1. HashMap 和 HashTable 的区别
-
-   ##### 相同点
-
-   HashMap 和 HashTable 都是基于哈希表实现的，其内部每个元素都是 key-value 键值对，两者都实现了 Map、Cloneable、Serializable 接口
-
-   ##### 不同点
-
-   + 父类不同：HashMap继承了 AbstractMap 类，HashTable继承了 Dictionary 类
-   + 空值不同：HashMap允许空的 key 和 value值，HashTable不允许空的 key 和 value值。
-   + 线程安全性：HashMap不是线程安全性的，如果多个外部操作同时修改 HashMap 的数据结构，必须进行同步操作，可选择 Collections.synchronizedMap 或者是 ConcurrentHashMap。
-   + 性能：HashMap 进行 put 或者 get 可以达到常数时间的性能，HashTable的两个操作加了 synchroned 锁。
-   + 初始容量不同：HashTable的初始长度为11，扩容为 2n + 1；HashMap初始长度为16，扩容为 2 倍。 
-
-2. HashMap 和 HashSet 的区别
-
-   HashSet 继承于 AbstractSet 接口，实现了 Set、Cloneable、Serializable 接口。HashSet不允许集合中出现重复的值。HashSet的底层就是HashMap，不保证集合的顺序。
-
-3. HashMap 的数据结构
-
-   JDK 1.7 中，HashMap 采用 位桶 + 链表 的实现，即使用链表来处理冲突，同一 hash 值的链表都存储在一个数组中。但是位于一个桶中的元素较多，即 hash 值相等的元素较多时，通过 key 值查找效率较低。
-
-   JDK 1.8 中，每个桶中元素数量大于8时会转变为红黑树，目的是优化查询效率
-
-4. HashMap 的 put 过程
-
-   首先使用 hash 方法计算对象的哈希码，根据哈希码来确定在 bucket 中存放的位置，如果 bucket 中没有 Node 节点则直接进行 put，如果对应 bucket 已经有 Node 节点，会对链表长度进行分析，判断长度是否大于 8，如果链表长度小于 8 ，在 JDK1.7 前会使用头插法，在 JDK1.8 之后更改为尾插法。如果链表长度大于8会进行树化操作，把链表转换为红黑树，在红黑树上进行存储。
-
-5. HashMap 为啥线程不安全
-
-   HashMap 遇到 多线程并发执行 put 操作时。如果有两个线程 A 和 B，A 希望插入一个键值对到 HashMap 中，在决定好桶位置进行 put 时，此时 A 的时间片正好用完了，轮到 B 运行，B运行后执行和 A 一样的操作，成功把键值对插入。线程 A 继续执行会覆盖 B 的记录，造成数据不一致问题。
-
-   HashMap 在扩容时，因 resize 方法形成环，造成死循环，导致CPU提高。
-
-6. HashMap 如何处理哈希碰撞
-
-   HashMap 底层使用 位桶 + 链表实现的，位桶决定元素的插入位置，位桶是由 hash 方法决定的，当多个元素的 hash 计算得到相同的哈希值后，HashMap 会把多个Node元素都放在相应的位桶中，形成链表 (链地址法)
-
-7. HashMap 线程安全的实现有哪些
-
-   ConcurrentHashMap Collections.synchronizedMap
-
 ### 红黑树 源码分析
 
 #### putTreeVal 函数
@@ -812,5 +768,258 @@ static <K,V> void moveRootToFront(Node<K,V>[] tab, TreeNode<K,V> root) {
 }
 ```
 
+### removeTreeNode 函数
 
+```java
+final void removeTreeNode(HashMap<K,V> map, Node<K,V>[] tab, boolean movable) {
+    // 双链表处理
+    int n;
+    // tab 为空 或 长度为0 直接返回
+    if (tab == null || (n = tab.length) == 0) 
+        return;
+    // 计算桶的位置
+    int index = (n - 1) & hash;
+    // 将桶的头节点赋值给 root 和 first 节点，找到头节点的前继节点和后继节点
+    TreeNode<K,V> first = (TreeNode<K,V>)tab[index], root = first, rl;
+    TreeNode<K,V> succ = (TreeNode<K,V>)next, pred = prev;
+    // 若头节点无前继节点，说明需要移除的节点为头节点，将tab索引位置的值和first赋值为succ节点
+    if (pred == null)
+        tab[index] = first = succ;
+    else
+        // 否则将pred的next指针指向succ节点
+        pred.next = succ;
+    // 若后继节点不为空，调整prev指针指向pred节点 此时相当于双链表中remove操作已完成
+    if (succ != null)
+        succ.prev = pred;
+    if (first == null)
+        return;
+    // 查找树的根节点
+    if (root.parent != null)
+        root = root.root();
+    // 通过root节点来判断此红黑树是否太小, 如果是则调用untreeify方法转为链表节点并返回
+    if (root == null || root.right == null ||
+       (rl = root.left) == null || rl.left == null) {
+        tab[index] = first.untreeify(map);
+        return;
+    }
+    
+    // 红黑树处理
+    TreeNode<K,V> p = this, pl = left, pr = right, replacement;
+    // 若节点p的左孩子和右孩子节点不为空
+    if (pl != null && pr != null) {
+        TreeNode<K,V> s = pr, sl;
+        // 寻找右子树中的最小节点
+        while ((sl = s.left) != null)
+            s = sl;
+        // 交换 节点p 和节点s 的颜色
+        boolean c = s.red; s.red = p.red; p.red = c;
+        TreeNode<K,V> sr = s.right;
+        TreeNode<K,V> pp = p.parent;
+        // 交换 节点p 和 节点s
+        if (s == pr) {
+            p.parent = s;
+            s.right = p;
+        }
+        else {
+            TreeNode<K,V> sp = s.parent;
+            if ((p.parent = sp) != null) {
+                if (s == sp.left)
+                    sp.left = p;
+                else
+                    sp.right = p;
+            }
+            if ((s.right = pr) != null)
+                pr.parent = s;
+        }
+        p.left = null;
+        if ((p.right = sr) != null)
+            sr.parent = p;
+        if ((s.left = pl) != null)
+            pl.parent = s;
+        if ((s.parent = pp) == null)
+            root = s;
+        else if (p == pp.left)
+            pp.left = s;
+        else 
+            pp.right = s;
+        // 若 sr 不为空 使用s的右节点来替换p的位置
+        if (sr != null)
+            replacement = sr;
+        else 
+            // 若 s 为叶子节点，将p节点直接去除
+            replacement = p;
+    }
+    else if (pl != null)
+        replacement = pl;
+    else if (pr != null)
+        replacement = pr;
+    else
+        replacement = p;
+    // 将节点p从树结构中去除，调整上下指针关系
+    if (replacement != p) {
+        TreeNode<K,V> pp = replacement.parent = p.parent;
+        if (pp == null)
+            root = replacement;
+        else if (p == pp.left)
+            pp.left = replacement;
+        else
+            pp.right = replacement;
+        p.left = p.right = p.parent = null;
+    }
+    // 如果p节点不为红色则进行红黑树删除平衡调整
+    TreeNode<K,V> r = p.red ? root : balanceDeletion(root, replacement);
+    // 节点p为叶子节点直接删除
+    if (replacement == p) {
+        TreeNode<K,V> pp = p.parent;
+        p.parent = null;
+        if (pp != null) {
+            if (p == pp.left)
+                pp.left = null;
+            else if (p == pp.right)
+                pp.right = null;
+        }
+    }
+    if (movable)
+        moveRootToFront(tab, r);
+}
+```
+
+### rotateLeft 函数
+
+```java
+static <K,V> TreeNode<K,V> rotateLeft(TreeNode<K,V> root, TreeNode<K,V> p) {
+    TreeNode<K,V> r, pp, rl;
+    // 左旋操作需存在右子节点 节点p的右子节点赋值为节点r
+    if (p != null && (r = p.right) != null) {
+        // 节点r的左节点不为空 赋值为rl，将rl赋值到节点p的右子节点
+        if ((rl = p.right = r.left) != null)
+            rl.parent = p;
+        // 判断节点p是否存在父亲节点
+        if ((pp = r.parent = p.parent) == null)
+            (root = r).red = false;
+        else if (pp.left == p)
+            pp.left = r;
+        else
+            pp.right = r;
+        // 处理节点r和节点p的关系
+        r.left = p;
+        p.parent = r;
+    }
+    return root;
+}
+```
+
+### balanceInsertion 函数
+
+```java
+ static <K,V> TreeNode<K,V> balanceInsertion(TreeNode<K,V> root, TreeNode<K,V> x) {
+     x.red = true;// 当前节点设置为红色
+     for (TreeNode<K,V> xp, xpp, xppl, xppr;;) {
+         //父亲节点为空，表示当前节点为根节点
+         if ((xp = x.parent) == null) {
+             x.red = false;
+             return x;
+         }
+         // 父亲节点为黑色 或 父亲节点为红色，爷爷节点为空
+         else if (!xp.red || (xpp = xp.parent) == null)
+             return root;
+         // 父亲节点为红色 且爷爷节点不为空
+         // 若父亲节点为爷爷节点的左孩子
+         if (xp == (xppl = xpp.left)) {
+             // 右叔叔节点不为空 且为红色
+             // 父亲和叔叔节点置为黑色，爷爷节点置为红色，以爷爷节点为起点向上开启新一轮迭代
+             if ((xppr = xpp.right) != null && xppr.red) {
+                 xppr.red = false;
+                 xp.red = false;
+                 xpp.red =true;
+                 x = xpp;
+             }
+             // 右叔叔为空 或者 右叔叔 不为空 但是为黑色
+             else {
+                 // 如果当前节点为父亲节点右孩子
+                 if (x == xp.right) {
+                     root = rotateLeft(root, x = xp);
+                     xpp = (xp = x.parent) == null ? null : xp.parent;
+                 }
+                 if (xp != null) {
+                     xp.red = false;
+                     if (xpp != null) {
+                         xpp.red = true;
+                         root = rotateRight(root, xpp);
+                     }
+                 }
+             }
+         }
+         // 父亲节点为爷爷节点的右孩子
+         else {
+             // 左叔叔节点不为空 且为红色
+             // 父亲和叔叔节点置为黑色，爷爷节点置为红色，以爷爷节点为起点向上开启新一轮迭代
+             if (xppl != null && xppl.red) {
+                 xppl.red = false;
+                 xp.red = false;
+                 xpp.red = true;
+                 x = xpp;
+             }
+             // 左叔叔为空 或者 右叔叔 不为空 但是为黑色
+             else {
+                 if (x == xp.left) {
+                     root = rotateRight(root, x = xp);
+                     xpp = (xp = x.parent) == null ? null : xp.parent;
+                 }
+                 if (xp != null) {
+                     xp.red = false;
+                     if (xpp != null) {
+                         xpp.red = true;
+                         root = rotateLeft(root, xpp);
+                     }
+                 }
+             }
+         }
+     }
+ }
+```
+
+### 常见面试题
+
+1. HashMap 和 HashTable 的区别
+
+   ##### 相同点
+
+   HashMap 和 HashTable 都是基于哈希表实现的，其内部每个元素都是 key-value 键值对，两者都实现了 Map、Cloneable、Serializable 接口
+
+   ##### 不同点
+
+   + 父类不同：HashMap继承了 AbstractMap 类，HashTable继承了 Dictionary 类
+   + 空值不同：HashMap允许空的 key 和 value值，HashTable不允许空的 key 和 value值。
+   + 线程安全性：HashMap不是线程安全性的，如果多个外部操作同时修改 HashMap 的数据结构，必须进行同步操作，可选择 Collections.synchronizedMap 或者是 ConcurrentHashMap。
+   + 性能：HashMap 进行 put 或者 get 可以达到常数时间的性能，HashTable的两个操作加了 synchroned 锁。
+   + 初始容量不同：HashTable的初始长度为11，扩容为 2n + 1；HashMap初始长度为16，扩容为 2 倍。 
+
+2. HashMap 和 HashSet 的区别
+
+   HashSet 继承于 AbstractSet 接口，实现了 Set、Cloneable、Serializable 接口。HashSet不允许集合中出现重复的值。HashSet的底层就是HashMap，不保证集合的顺序。
+
+3. HashMap 的数据结构
+
+   JDK 1.7 中，HashMap 采用 位桶 + 链表 的实现，即使用链表来处理冲突，同一 hash 值的链表都存储在一个数组中。但是位于一个桶中的元素较多，即 hash 值相等的元素较多时，通过 key 值查找效率较低。
+
+   JDK 1.8 中，每个桶中元素数量大于8时会转变为红黑树，目的是优化查询效率
+
+4. HashMap 的 put 过程
+
+   首先使用 hash 方法计算对象的哈希码，根据哈希码来确定在 bucket 中存放的位置，如果 bucket 中没有 Node 节点则直接进行 put，如果对应 bucket 已经有 Node 节点，会对链表长度进行分析，判断长度是否大于 8，如果链表长度小于 8 ，在 JDK1.7 前会使用头插法，在 JDK1.8 之后更改为尾插法。如果链表长度大于8会进行树化操作，把链表转换为红黑树，在红黑树上进行存储。
+
+5. HashMap 为啥线程不安全
+
+   HashMap 遇到 多线程并发执行 put 操作时。如果有两个线程 A 和 B，A 希望插入一个键值对到 HashMap 中，在决定好桶位置进行 put 时，此时 A 的时间片正好用完了，轮到 B 运行，B运行后执行和 A 一样的操作，成功把键值对插入。线程 A 继续执行会覆盖 B 的记录，造成数据不一致问题。
+
+   HashMap 在扩容时，因 resize 方法形成环，造成死循环，导致CPU提高。
+
+6. HashMap 如何处理哈希碰撞
+
+   HashMap 底层使用 位桶 + 链表实现的，位桶决定元素的插入位置，位桶是由 hash 方法决定的，当多个元素的 hash 计算得到相同的哈希值后，HashMap 会把多个Node元素都放在相应的位桶中，形成链表 (链地址法)
+
+7. HashMap 线程安全的实现有哪些
+
+   ConcurrentHashMap Collections.synchronizedMap
 
