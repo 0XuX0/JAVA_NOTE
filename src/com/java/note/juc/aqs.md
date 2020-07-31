@@ -174,7 +174,8 @@ private final boolean parkAndCheckInterrupt() {
 // 总结
 // 1.通过tryAcquire(arg)尝试获取锁资源，若获取成功则直接返回，若获取失败则将该线程以独占模式添加到等待队列尾部
 // 2.当线程加入等待队列后，通过acquireQueued方法基于CAS自旋不断尝试获取资源，直至获取到资源
-// 3.若acquireQueued方法获取到资源并返回true，表示被中断过，则执行线程自我中断操作selfInterrupt()，即获取资源后中断，来响应中断请求
+// 3.若获取失败，根据前继节点的状态判断是否可以阻塞，若可以阻塞则调用LockSupport.park()方法，并检测线程是否被中断过
+// 4.若acquireQueued方法获取到资源并返回true，表示被中断过，则执行线程自我中断操作selfInterrupt()，即获取资源后中断，来响应中断请求
 ```
 
 ### 释放资源（独占）
@@ -229,7 +230,7 @@ private void unparkSuccessor(Node node) {
 ```java
 public final void acquireShared(int arg) {
     if (tryAcquireShared(arg) < 0)
-        adAcquireShared(arg);
+        doAcquireShared(arg);
 }
 
 // 尝试以共享的模式释放资源，具体实现由扩展了AQS的同步器完成
@@ -240,9 +241,11 @@ protected int tryAcquireShared(int arg) {
 private void doAcquireShared(int arg) {
     // 将线程以共享模式添加到等待队列的尾部
     final Node node = addWaiter(Node.SHARED);
-    // 初始化失败标志
-    boolean interrupted = false;
+    // 初始化标识是否获取资源失败
+    boolean failed = true;
     try {
+        // 初始化失败标志
+        boolean interrupted = false;
         // 自旋操作
         for (;;) {
             // 获取当前节点的前继节点
@@ -254,25 +257,32 @@ private void doAcquireShared(int arg) {
                 if (r >= 0) {
                     setHeadAndPropagate(node, r);
                     p.next = null;
+                    if (interrupted)
+                        selfInterrupt();
+                    failed = false;
                     return;
                 }
             }
-            if (shouldParkAfterFailedAcquire(p, node)) 
-                interrupted |= parkAndCheckInterrupt();
+            // 若获取资源失败 调用shouldParkAfterFailedAcquire方法判断是否阻塞当前节点的线程
+            // 调用parkAndCheckInterrupt方法检查线程是否被中断过
+            if (shouldParkAfterFailedAcquire(p, node) &&
+                    parkAndCheckInterrupt()) 
+                interrupted = true;
         }
-    } catch (Throwable t) {
-        cancelAcquire(node);
-        throw t;
     } finally {
-        if (interrupted)
-            selfInterrupt();
+        if (failed)
+            // 放弃获取资源
+            cancelAcquire(node);
     }
 }
 
 private void setHeadAndPropagate(Node node, int propagate) {
+    // 记录原来的头节点
     Node h = head;
+    // 设置新的头节点
     setHead(node);
     
+    // 如果资源还有剩余，则唤醒后继节点
     if (propagate > 0 || h == null || h.waitStatus < 0 ||
        (h = head) == null || h.waitStatus < 0) {
         Node s = node.next;
@@ -282,8 +292,11 @@ private void setHeadAndPropagate(Node node, int propagate) {
 }
 
 private void doReleaseShared() {
+    // 自旋操作
     for (;;) {
+        // 获取等待队列的头节点
         Node h = head;
+        // 等待队列至少含两个节点
         if (h != null && h != tail) {
             int ws = h.waitStatus;
             if (ws == Node.SIGNAL) {
@@ -295,6 +308,7 @@ private void doReleaseShared() {
                      !compareAndSetWaitStatus(h, 0, Node.PROPAGATE))
                 continue;                // loop on failed CAS
         }
+        // 若head已被其他线程修改，继续自旋判断下一个新的head
         if (h == head)                   // loop if head changed
             break;
     }
