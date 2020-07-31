@@ -177,68 +177,139 @@ private final boolean parkAndCheckInterrupt() {
 // 3.若acquireQueued方法获取到资源并返回true，表示被中断过，则执行线程自我中断操作selfInterrupt()，即获取资源后中断，来响应中断请求
 ```
 
-
+### 释放资源（独占）
 
 ```java
-public abstract class AbstractQueuedSynchronizer extends AbstractOwnableSynchronizer {
-    
-    /*
-     * 唤醒后继节点
-     */
-    private void unparkSuccessor(Node node) {
-        /*
-         * 调整当前节点的状态
-         */
-        int ws = node.waitStatus;
-        if (ws < 0)
-            compareAndSetWaitStatus(node, ws, 0);
-
-        /*
-         * 若后继节点被取消或为null,则从尾部开始寻找真正的未被取消的节点
-         */
-        Node s = node.next;
-        if (s == null || s.waitStatus > 0) {
-            s = null;
-            for (Node t = tail; t != null && t != node; t = t.prev)
-                if (t.waitStatus <= 0)
-                    s = t;
-        }
-        if (s != null)
-            // 唤醒线程
-            LockSupport.unpark(s.thread);
-    }
-    
-    private void doReleaseShared() {
-        for (;;) {
-            Node h = head;
-            if (h != null && h != tail) {
-                int ws = h.waitStatus;
-                if (ws == Node.SIGNAL) {
-                    if (!compareAndSetWaitStatus(h, Node.SIGNAL, 0))
-                        continue;            // loop to recheck cases
-                    unparkSuccessor(h);
-                }
-                else if (ws == 0 &&
-                         !compareAndSetWaitStatus(h, 0, Node.PROPAGATE))
-                    continue;                // loop on failed CAS
-            }
-            if (h == head)                   // loop if head changed
-                break;
-        }
-    }
-    
-    private void setHeadAndPropagate(Node node, int propagate) {
+public final boolean release(int arg) {
+    if (tryRelease(arg)) {
+        // 获取等待队列的头结点h
         Node h = head;
-        setHead(node);
-        
-        if(propagate > 0 || h == null || h.waitStatus < 0 ||
-          (h = head) == null || h.waitStatus < 0) {
-            Node s = node.next;
-            if(s == null || s.isShared())
-                doReleaseShared();
-        }
+        // 若头结点不为空且其ws值非0，则唤醒h的后继节点
+        if (h != null && h.waitStatus != 0)
+            unparkSuccessor(h);
+        return true;
     }
+    return false;
+}
+
+// 尝试以独占的模式释放资源，具体实现由扩展了AQS的同步器完成
+protected boolean tryRelease(int arg) {
+    throw new UnsupportedOperationException();
+}
+
+/*
+ * 唤醒后继节点
+ */
+private void unparkSuccessor(Node node) {
+    /*
+     * 调整当前节点的状态
+     */
+    int ws = node.waitStatus;
+    if (ws < 0)
+        compareAndSetWaitStatus(node, ws, 0);
+
+    /*
+     * 若后继节点被取消或为null,则从尾部开始寻找真正的未被取消的节点
+     */
+    Node s = node.next;
+    if (s == null || s.waitStatus > 0) {
+        s = null;
+        for (Node t = tail; t != null && t != node; t = t.prev)
+            if (t.waitStatus <= 0)
+                s = t;
+    }
+    if (s != null)
+        // 唤醒线程
+        LockSupport.unpark(s.thread);
+}
+```
+
+### 获取资源（共享模式）
+
+```java
+public final void acquireShared(int arg) {
+    if (tryAcquireShared(arg) < 0)
+        adAcquireShared(arg);
+}
+
+// 尝试以共享的模式释放资源，具体实现由扩展了AQS的同步器完成
+protected int tryAcquireShared(int arg) {
+    throw new UnsupportedOperationException();
+}
+
+private void doAcquireShared(int arg) {
+    // 将线程以共享模式添加到等待队列的尾部
+    final Node node = addWaiter(Node.SHARED);
+    // 初始化失败标志
+    boolean interrupted = false;
+    try {
+        // 自旋操作
+        for (;;) {
+            // 获取当前节点的前继节点
+            final Node p = node.predecess();
+            // 若前继节点为头节点，则执行tryAcquireShared获取资源
+            if (p == head) {
+                int r = tryAcquireShared(arg);
+                // 若获取资源成功，且有剩余资源，将自己设为头结点并唤醒后继的阻塞线程
+                if (r >= 0) {
+                    setHeadAndPropagate(node, r);
+                    p.next = null;
+                    return;
+                }
+            }
+            if (shouldParkAfterFailedAcquire(p, node)) 
+                interrupted |= parkAndCheckInterrupt();
+        }
+    } catch (Throwable t) {
+        cancelAcquire(node);
+        throw t;
+    } finally {
+        if (interrupted)
+            selfInterrupt();
+    }
+}
+
+private void setHeadAndPropagate(Node node, int propagate) {
+    Node h = head;
+    setHead(node);
     
+    if (propagate > 0 || h == null || h.waitStatus < 0 ||
+       (h = head) == null || h.waitStatus < 0) {
+        Node s = node.next;
+        if (s == null || s.inShared())
+            doReleaseShared();
+    }
+}
+
+private void doReleaseShared() {
+    for (;;) {
+        Node h = head;
+        if (h != null && h != tail) {
+            int ws = h.waitStatus;
+            if (ws == Node.SIGNAL) {
+                if (!compareAndSetWaitStatus(h, Node.SIGNAL, 0))
+                    continue;            // loop to recheck cases
+                unparkSuccessor(h);
+            }
+            else if (ws == 0 &&
+                     !compareAndSetWaitStatus(h, 0, Node.PROPAGATE))
+                continue;                // loop on failed CAS
+        }
+        if (h == head)                   // loop if head changed
+            break;
+    }
+}
+```
+
+### 释放资源（共享模式）
+
+```java
+public final boolean releaseShared(int arg) {
+    if (tryReleaseShared(arg)) {
+        doReleaseShared();
+        return true;
+    }
+    return false;
 }
 ```
 
