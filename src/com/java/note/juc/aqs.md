@@ -30,6 +30,9 @@ protected final boolean compareAndSetState(int expect, int update) {
 通过内部类 Node 实现 FIFO 队列
 
 ```java
+//      +------+  prev +-----+       +-----+
+// head |      | <---- |     | <---- |     |  tail
+//      +------+       +-----+       +-----+
 static final class Node {
     // 共享模式节点
     static final Node SHARED = new Node();
@@ -324,6 +327,160 @@ public final boolean releaseShared(int arg) {
         return true;
     }
     return false;
+}
+```
+
+### 条件队列
+
+在介绍内部类 Node 时有提到一个变量 nextWaiter，这就是AQS中另一个重要组成部分 条件队列。
+
+#### 内部类 ConditionObject
+
+```java
+// 条件队列是单链表结构
+private transient Node firstWaiter; // 条件队列首节点
+private transient Node lastWaiter; // 条件队列尾节点
+
+private static final int REINTERRUPT = 1; // 从等待状态切换为中断状态
+private static final int THROW_IE = -1; // 抛出异常标识
+```
+
+#### 线程等待 await()
+
+```java
+public final void await() throws InterruptedException {
+    if (Thread.interrupted())
+        throw new InterruptedException();
+    Node node = addConditionWaiter(); // 向条件等待队列中添加新节点
+    // 将新节点加入到等待队列之后，需要去释放锁，并且唤醒后继节点线程
+    int saveState = fullyRelease(node);
+    int interruptMode = 0;
+    // 当前节点不在同步队列中
+    while (!isOnSyncQueue(node)) {
+        LockSupport.park(this); //阻塞当前线程，等待被其他线程唤醒 或 中断
+        // 线程被唤醒后判断线程若为中断状态，则尝试将node节点状态变更为0
+        // 若变更成功，判断中断原因是否是异常，若变更失败，则让出CPU，让其他线程将node放回同步队列
+        // 若返回是初始值0，则判断是否进入同步队列，结束循环
+        if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
+            break;
+    }
+    // 让节点线程申请锁，若申请成功调整interruptMode值，未来会让线程中断
+    if (acquireQueued(node, savedState) && interruptMode != THROW_IE)
+        interruptMode = REINTERRUPT;
+    if (node.nextWaiter != null)
+        unlinkCancelledWaiters();
+    if (interruptMode != 0)
+        // 处理interruptMode不为初始值的情况 抛异常或中断
+        reportInterruptAfterWait(interruptMode);
+}
+
+private Node addConditionWaiter() {
+    Node t = lastWaiter;
+    if (t != null && t.waitStatus != Node.CONDITION) {
+        unlinkCancelledWaiters(); // 遍历等待队列，将非CONDITION状态的节点移除
+        t = lastWaiter;
+    }
+    Node node = new Node(Thread.currentThread(), Node.CONDITION);
+    // 条件队列为空
+    if (t == null)
+        firstWaiter = node;
+    else
+        // 尾插
+        t.nextWaiter = node;
+    lastWaiter = node;
+    return node;
+}
+final int fullyRelease(Node node) {
+    boolean failed = true;
+    try {
+        int savedState = getState(); 
+        // 调用 release 方法，返回保存的状态，失败则抛出异常且将节点置为取消状态
+        if (release(savedState)) {
+            failed = false;
+            return savedStatus;
+        } else {
+            throw new IllegalMonitorStateException();
+        }
+    } finally {
+        if (failed)
+            node.waitStatus = Node.CANCELLED;
+    }
+}
+private int checkInterruptWhileWaiting(Node node) {
+    return Thread.interrupted() ?
+        (transferAfterCancelledWait(node) ? THROW_IE : REINTERRUPT) : 0;
+}
+final boolean transferAfterCancelledWait(Node node) {
+    if (compareAndSetWaitStatus(node, Node.CONDITION, 0)) { // 将节点状态由CONDITION调整为0
+        enq(node); // 加入同步队列
+        return true;
+    }
+    while (!isOnSyncQueue(node)) // 让线程回到同步队列
+        Thread.yield(); // 让出CPU时间
+    return false;
+}
+private void reportInterruptAfterWait(int interruptMode) throws InterruptedException {
+    if (interruptMode == THROW_IE)
+        throw new InterruptedException();
+    else if (interruptMode == REINTERRUPT)
+        selfInterrupt();
+}
+```
+
+#### 线程唤醒 signal()
+
+```java
+public final void signal() {
+    if (!isHeldExclusively()) //子类实现具体方法，判断当前线程是否持有锁
+        throw new IllegalMonitorStateException();
+    Node first = firstWaiter;
+    if (first != null)
+        doSignal(first); // 执行唤醒操作
+}
+
+//唤醒条件队列首节点
+private void doSignal(Node first) {
+    do {
+        // 清空等待队列
+        if ((firstWaiter = first.nextWaiter) == null)
+            lastWaiter = null;
+        first.nextWaiter = null;
+    } while (!transferForSignal(first) && // 不断尝试唤醒等待队列的头节点，直到找到一个没有被cancel的节点
+            (first = firstWaiter) != null);
+}
+final boolean transferForSignal(Node node) {
+    // CAS 将当前条件队列节点状态设置为0
+    if (!compareAndSetWaitStatus(node, Node.CONDITION,0))
+        return false;
+    // transfer至同步队列 返回node的前一节点
+    Node p = enq(node);
+    int ws = p.waitStatus;
+    if (ws > 0 || !compareAndSetWaitStatus(p, ws, Node.SIGNAL))
+        //唤醒刚加入到同步队列的线程，被唤醒之后，该线程才能从await()方法的park()中返回
+        LockSupport.unpark(node.thread); 
+    return true;
+}
+```
+
+#### 唤醒所有线程signalAll()
+
+```java
+public final void signalAll() {
+    if (!isHeldExclusively())
+        throw new IllegalMonitorStateException();
+    Node first = firstWaiter;
+    if (first != null)
+        doSignalAll(first);
+}
+
+private void doSignalAll(Node first) {
+    lastWaiter = firstWaiter = null;
+    do {
+        Node next = first.nextWaiter;
+        first.nextWaiter = null;
+        transferForSignal(first);
+        first = next;
+    } while (first != null);
 }
 ```
 
