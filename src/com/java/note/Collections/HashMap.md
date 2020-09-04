@@ -2,7 +2,7 @@
 
 ### 继承关系
 
-![继承关系](./HashMap.png)
+![继承关系](pic//HashMap.png)
 
 ### 重要内部类
 
@@ -994,6 +994,7 @@ static <K,V> TreeNode<K,V> rotateLeft(TreeNode<K,V> root, TreeNode<K,V> p) {
    + 线程安全性：HashMap不是线程安全性的，如果多个外部操作同时修改 HashMap 的数据结构，必须进行同步操作，可选择 Collections.synchronizedMap 或者是 ConcurrentHashMap。
    + 性能：HashMap 进行 put 或者 get 可以达到常数时间的性能，HashTable的两个操作加了 synchroned 锁。
    + 初始容量不同：HashTable的初始长度为11，扩容为 2n + 1；HashMap初始长度为16，扩容为 2 倍。 
+   + 底层数据结构：JDK1.8以后，HashMap引入了红黑树的概念
 
 2. HashMap 和 HashSet 的区别
 
@@ -1001,7 +1002,7 @@ static <K,V> TreeNode<K,V> rotateLeft(TreeNode<K,V> root, TreeNode<K,V> p) {
 
 3. HashMap 的数据结构
 
-   JDK 1.7 中，HashMap 采用 位桶 + 链表 的实现，即使用链表来处理冲突，同一 hash 值的链表都存储在一个数组中。但是位于一个桶中的元素较多，即 hash 值相等的元素较多时，通过 key 值查找效率较低。
+   JDK 1.7 中，HashMap 采用 位桶 + 链表 的实现，HashMap通过 key 的 hashCode 经过扰动函数处理后，然后通过 (n - 1) & h 判断当前元素存放的位置，如果当前位置存在元素，则比较hash值以及key，若相同则直接覆盖，不相同就即使用链表来处理冲突，同一 hash 值的链表都存储在一个数组中。但是位于一个桶中的元素较多，即 hash 值相等的元素较多时，通过 key 值查找效率较低。
 
    JDK 1.8 中，每个桶中元素数量大于8时会转变为红黑树，目的是优化查询效率
 

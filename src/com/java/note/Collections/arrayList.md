@@ -1,14 +1,15 @@
 ### ArrayList
-####概述
+#### 概述
 ArrayList 是最常用的 List 实现类，内部是通过数组实现的，它允许对元素进行快速随机访问。   
 数组的缺点是每个元素之间不能有间隔，当数组大小不满足时需要增加存储能力，就要将已经有  
 数据的数组复制到新的存储空间中。当从 ArrayList 的中间位置插入或者删除元素时，需要对数组  
 进行复制、移动，代价比较高。因此其适合随机查找和遍历，不适合插入和删除。  
-####继承关系 
-![alt 继承关系图](ArrayList.png)
+#### 继承关系 
+![alt 继承关系图](pic/ArrayList.png)
+
 >ArrayList 继承自 AbstractList，实现了 List RandomAccess Serializable Cloneable 接口  
-  
-```
+
+```java
 int DEFAULT_CAPACITY = 10;
 Object[] EMPTY_ELEMENTDATA = {}; //含参构造函数但初始值为0
 Object[] DEFAULTCAPACITY_EMPTY_ELEMENTDATA = {}; //无参构造函数构造默认容量的数组
@@ -16,7 +17,7 @@ transient Object[] elementData; //含参构造函数且初始值非0
 ```
 >注: transient关键字修饰的变量不参与serialization持久化对象实例的过程。  
 >如 elementData 的 capacity = 10 当前的 size = 5, 后面五个元素不需要持久化。详可见 readObject & writeObject 方法  
-```
+```java
 /*将当前elementData数组的length设置成当前数组元素的size大小,即删除动态增长的多余空间*/
 trimToSize();
 
@@ -73,8 +74,9 @@ fastRemove(Object[] es, int i);
 //调用fastRemove方法删除元素并返回已删除的元素
 remove(int index)；
 ```
-#####Equals()
-```
+##### Equals()
+
+```java
 public boolean equals(Object o) {
     if (o == this) {
         return true;
@@ -100,7 +102,7 @@ public boolean equals(Object o) {
 >若Object o是ArrayList类则调用equalsArrayList方法，反之调用equalsRange方法  
 >最后调用checkForComodification方法判断fail-fast
 
-```
+```java
 boolean equalsRange(List<?> other, int from, int to) {
     final Object[] es = elementData;
     if (to > es.length) {
@@ -139,23 +141,25 @@ private boolean equalsArrayList(ArrayList<?> other) {
 >equalsRange方法使用迭代器遍历判断所有值是否一致  
 >equalsArrayList方法使用for循环遍历判断所有值是否一致，然后调用checkForComodification方法判断fail-fast   
 >疑问  
-> * 为啥两者使用遍历方式不同(List子类有linkedList,get方法获取元素时和迭代器相比有额外的开销，故用公共的迭代器遍历)  
-> * 为何后者判断了fail-fast而前者不用(checkForComodification是ArrayList的私有方法)  
-> * for和迭代器性能比较(for > iterator > forEach)
+>
+>* 为啥两者使用遍历方式不同(List子类有linkedList,get方法获取元素时和迭代器相比有额外的开销，故用公共的迭代器遍历)  
+>* 为何后者判断了fail-fast而前者不用(checkForComodification是ArrayList的私有方法)  
+>* for和迭代器性能比较(for > iterator > forEach)
 
-#####HashCode()
-```
+##### HashCode()
+
+```java
 hashCodeRange(int from, int to) // forEach e-> hashCode = 31 * hashCode + (e == null ? 0 : e.hashCode());
 ```
 >31作为乘子的原因：  
 >a.更少的乘积结果冲突  
 >b.31可以通过位运算被JVM优化  
-```
+```java
 addAll(Collection<? extends E> c) // 1.判断是否需要扩容  2.System.arraycopy 插入数组
 addAll(int index, Collection<? extends E> c) // 1.判断是否需要扩容 2.将index后面的元素往后挪 s - index 个位置 3.System.arraycopy 插入数组
 ```
 
-```
+```java
 // 将toIndex后面的元素移动到fromIndex的位置 将数组最后 (toIndex - fromIndex) 个元素置为null
 removeRange(int fromIndex, int toIndex);
 shiftTailOverGap(Object[] es, int lo, int hi);
@@ -172,7 +176,8 @@ retainAll(Collection<?> c);
 */
 batchRemove(Collection<?> c, boolean complement, final int from, final int end);
 ```
-#####SubList()
+##### SubList()
+
 + subList强制转换ArrayList会报ClassCastException // subList() 返回的是内部类 和ArrayList没有继承关系
 + non-structural changes both affects sourceList and subList
 + structural changes in subList will affect sourceList

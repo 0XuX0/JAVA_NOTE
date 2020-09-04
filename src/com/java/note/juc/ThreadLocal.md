@@ -4,7 +4,7 @@ ThreadLocal 叫做线程变量，意思是 ThreadLocal 中填充的变量属于�
 
 ### ThreadLocal 数据结构
 
-![ThreadLocal Data Structure](ThreadLocal Data Structure.png)
+![ThreadLocal Data Structure](pic/ThreadLocal Data Structure.png)
 
 Thread类有一个类型为ThreadLocal.ThreadLocalMap的实例变量threadLocals，ThreadLocalMap是ThreadLocal的静态内部类，其类似于HashMap的结构，但是没有链表结构，数组中存放Entry对象，其key是 ThreadLocal<?> 继承自 WeakReference，value是Object对象。每个线程往ThreadLocal里放值时，会往自己的ThreadLocalMap里存，读取时也是以ThreadLocal作为引用，在自己的map里找对应的key，从而实现线程隔离。
 
@@ -237,7 +237,7 @@ private boolean cleanSomeSlots(int i, int n) {
 
 启发式清理流程如下图
 
-![cleanSomeSlot](cleanSomeSlot.png)
+![cleanSomeSlot](pic/cleanSomeSlot.png)
 
 #### 扩容机制
 
@@ -290,7 +290,7 @@ private void resize() {
 
 #### ThreadLocal内存泄漏
 
-![ThreadLocal OOM](ThreadLocal OOM.png)
+![ThreadLocal OOM](pic/ThreadLocal OOM.png)
 
 > 每个 thread 中都存在一个类型为 ThreadLocal.ThreadLocalMap 的map，map 中的 key 为一个 threadLocal 实例。这个map仅仅是针对 key 使用了弱引用。当把 threadLocal 实例置为null后，没有任何强引用指向threadlocal实例，故threadLocal会被gc回收。但Map中的value无法被回收，因为存在一条 current thread连接过来的强引用。所以在 threadLocal设置为null，线程结束之前，就发生了我们所认为的内存泄露。
 

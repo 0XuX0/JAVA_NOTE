@@ -1,9 +1,10 @@
 ### TreeMap
-####概述
+#### 概述
 TreeMap 
 
-####继承关系 
-![alt 继承关系图](TreeMap.png)
+#### 继承关系 
+![alt 继承关系图](pic/TreeMap.png)
+
 ```
 // Constructor
 TreeMap(); // non-comparator
