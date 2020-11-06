@@ -1,4 +1,4 @@
-package com.spring.note.proxy;
+package com.spring.test;
 
 /**
  * @ClassName PayProxy
