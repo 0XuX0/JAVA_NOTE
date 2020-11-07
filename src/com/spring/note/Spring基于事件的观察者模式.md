@@ -122,4 +122,166 @@ private void doInvokeListener(ApplicationListener listener, ApplicationEvent eve
 
 2. 使用@Async注解
 
-​	
+### 监听者
+
+​	在实际开发过程中，我们多用 @EventListener 注解作用于方法或类上，并定义监听的事件类，接下来，我们跟进源码来分析spring容器是如何实现监听机制的
+
+```java
+@Target({ElementType.METHOD, ElementType.ANNOTATION_TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+public @interface EventListener {
+    @AliasFor("classes")
+    Class<?>[] value() default {};
+    @AliasFor("value")
+    Class<?>[] classes() default {};
+    String condition() default "";
+}
+```
+
+​	从注解上可以发现 @EventListener 注解是通过 EventListenerMethodProcessor 方法自动将实例注入到容器中。
+
+```java
+public class EventListenerMethodProcessor implements SmartInitializingSingleton, ApplicationContextAware, BeanFactoryPostProcessor {
+    protected final Log logger = LogFactory.getLog(getClass());
+
+	@Nullable
+	private ConfigurableApplicationContext applicationContext;
+
+	@Nullable
+	private ConfigurableListableBeanFactory beanFactory;
+
+	@Nullable
+	private List<EventListenerFactory> eventListenerFactories;
+
+	private final EventExpressionEvaluator evaluator = new EventExpressionEvaluator();
+
+	private final Set<Class<?>> nonAnnotatedClasses = Collections.newSetFromMap(new ConcurrentHashMap<>(64));
+    
+    // any other implements ...
+}
+```
+
+​	该类实现了 ApplicationContextAware 接口：
+
+```java
+// 将上下文 applicationContext 注入进来
+@Override
+public void setApplicationContext(ApplicationContext applicationContext)
+    Assert.isTrue(applicationContext instanceof ConfigurableApplicationContext,
+                  "ApplicationContext does not implement ConfigurableApplicationContext");
+	this.applicationContext = (ConfigurableApplicationContext) applicationContext;
+}
+```
+
+​	该类实现了 BeanFactoryPostProcessor 接口，BeanFactoryPostProcessor是beanFactory的后置处理器，在BeanFactory标准初始化之后调用，这时所有的bean定义已经加载到beanFactory，但是bean的实例还未创建。实现 postProcessBeanFactory方法能够定制和修改BeanFactory的内容。
+
+```java
+// 获取容器中所有EventListenerFactory或者子类的bean
+@Override
+public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) {
+    this.beanFactory = beanFactory;
+    
+    Map<String, EventListenerFactory> beans = beanFactory.getBeansOfType(EventListenerFactory.class, false, false);
+    List<EventListenerFactory> factories = new ArrayList<>(beans.values());
+	AnnotationAwareOrderComparator.sort(factories);
+	this.eventListenerFactories = factories;
+}
+```
+
+​	该类实现了 SmartInitializingSingleton 接口，其作用是在Spring容器管理的所有单例对象（非懒加载对象）初始化完成之后调用的回调接口
+
+```java
+@Override
+public void afterSingletonsInstantiated() {
+    ConfigurableListableBeanFactory beanFactory = this.beanFactory;
+    Assert.state(this.beanFactory != null, "No ConfigurableListableBeanFactory set");
+    // 获取容器中所有的bean并循环处理
+    String[] beanNames = beanFactory.getBeanNamesForType(Object.class);
+    for (String beanName : beanNames) {
+        if (!ScopedProxyUtils.isScopedTarget(beanName)) {
+            Class<?> type = null;
+            try {
+                type = AutoProxyUtils.determineTargetClass(beanFactory, beanName);
+            }
+            catch (Throwable ex) {
+                // An unresolvable bean type, probably from a lazy bean - let's ignore it.
+            }
+            if (type != null) {
+                if (ScopedObject.class.isAssignableFrom(type)) {
+                    try {
+                        Class<?> targetClass = AutoProxyUtils.determineTargetClass(beanFactory, ScopedProxyUtils.getTargetBeanName(beanName));
+                        if (targetClass != null) {
+                            type = targetClass;
+                        }
+                    }
+                    catch (Throwable ex) {
+                        // An invalid scoped proxy arrangement - let's ignore it.
+                    }
+                }
+                try {
+                    processBean(beanName, type);
+                }
+                catch (Throwable ex) {
+                    throw new BeanInitializationException("Failed to process @EventListener " + "annotation on bean with name '" + beanName + "'", ex);
+                }
+            }
+        }
+    }
+}
+```
+
+接下来我们看 processBean 方法的源码
+
+```java
+private void processBean(final String beanName, final Class<?> targetType) {
+    // 在nonAnnotatedClasses中没出现过。并且类上或者方法上是否有EventListener注解
+    if (!this.nonAnnotatedClasses.contains(targetType) &&
+       AnnotationUtils.isCandidateClass(targetType, EventListener.class) &&
+       !isSpringContainerClass(targetType)) {
+        
+        Map<Method, EventListener> annotatedMethods = null;
+        try {
+            annotatedMethods = MethodIntrospector.selectMethods(targetType, (MethodIntrospector.MetadataLookup<EventListener>) method -> AnnotatedElementUtils.findMergedAnnotation(method, EventListener.class));
+        }
+        catch (Throwable ex) {
+            // An unresolvable type in a method signature, probably from a lazy bean - let's ignore it.
+        }
+        if (CollectionUtils.isEmpty(annotatedMethods)) {
+			this.nonAnnotatedClasses.add(targetType);
+			if (logger.isTraceEnabled()) {
+				logger.trace("No @EventListener annotations found on bean class: " + targetType.getName());
+			}
+		}
+        else {
+            ConfigurableApplicationContext context = this.applicationContext;
+			Assert.state(context != null, "No ApplicationContext set");
+			List<EventListenerFactory> factories = this.eventListenerFactories;
+			Assert.state(factories != null, "EventListenerFactory List not initialized");
+			for (Method method : annotatedMethods.keySet()) {
+				for (EventListenerFactory factory : factories) {
+					if (factory.supportsMethod(method)) {
+						Method methodToUse = AopUtils.selectInvocableMethod(method, context.getType(beanName));
+                        // 根据beanName和targetType生成applicationListener
+						ApplicationListener<?> applicationListener =
+								factory.createApplicationListener(beanName, targetType, methodToUse);
+						if (applicationListener instanceof ApplicationListenerMethodAdapter) {
+							((ApplicationListenerMethodAdapter) applicationListener).init(context, this.evaluator);
+						}
+                        // 注入容器
+						context.addApplicationListener(applicationListener);
+						break;
+					}
+				}
+			}
+            if (logger.isDebugEnabled()) {
+				logger.debug(annotatedMethods.size() + " @EventListener methods processed on bean '" + beanName + "': " + annotatedMethods);
+			}
+        }
+    }
+}
+```
+
+### 总结
+
+​	添加了@EventListener注解的自定义名称的方法，会在EventListenerMethodProcessor中的afterSingletonsInstantiated()方法中遍历所有 ApplicationContext容器的单利bean。将所有添加了@EventListener的方法注入到ApplicationContext的applicationListeners和初始化的SimpleApplicationEventMulticaster的defaultRetriever.applicationListeners中，在发送事件时候获取监听列表时用。
