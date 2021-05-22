@@ -1,4 +1,4 @@
-## 原型模式
+## 原型模式（Prototype Pattern）
 
 ### 基本介绍
 
