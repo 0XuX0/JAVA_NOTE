@@ -356,7 +356,7 @@ private Runnable getTask() {
 }
 ```
 
-核心线程会一直卡在 workQueue.take 方法，被阻塞并挂起，不会占用CPU资源，直到拿到 Runnable 然后返回（如果 **allowCoreThreadTimeOut** 设置为true，那么核心线程就会去调用 poll 方法，若 poll 返回 null， 所以核心线程满足超市条件也会被销毁）。
+核心线程会一直卡在 workQueue.take 方法，被阻塞并挂起，不会占用CPU资源，直到拿到 Runnable 然后返回（如果 **allowCoreThreadTimeOut** 设置为true，那么核心线程就会去调用 poll 方法，若 poll 返回 null， 所以核心线程满足超时条件也会被销毁）。
 
 非核心线程会调用 workQueue.poll 方法，如果超时还没拿到，下一次循环判断 compareAndDecrementWorkerCount 就会返回 null，Worker对象的 run() 方法循环体的判断为 null。
 

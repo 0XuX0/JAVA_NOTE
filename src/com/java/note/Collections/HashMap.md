@@ -222,7 +222,7 @@ final V putVal(int hash, K key, V value, boolean onlyIfAbsent, boolean evict) {
     // 如果不为空
     else {
         Node<K,V> e; K k;
-        // 计算表中的这个真正的哈希值与要插入的key.hash相比
+        // 计算表中的这个真正的哈希值与要插入的key.hash相比，hash 和 key内容都一致
         if (p.hash == hash && ((k = p.key) == key || (key != null && key.equals(k))))
             e = p;
         // 若不同的话，并且当前节点已经在 TreeNode 上了
@@ -250,6 +250,7 @@ final V putVal(int hash, K key, V value, boolean onlyIfAbsent, boolean evict) {
         // map中含有旧值，返回旧值
         if (e != null) { // existing mapping for key
             V oldValue = e.value;
+            // 根据 onlyIfAbsent 参数决定是否覆盖
             if (!onlyIfAbsent || oldValue == null)
                 e.value = value;
             afterNodeAccess(e);
@@ -312,6 +313,9 @@ final Node<K,V>[] resize() {
                 // 若 当前元素没有 链式后继节点
                 if (e.next == null)
                     // 重新计算在新数组中存放的位置并放入
+                    // 部分元素放在原位 部分元素放在 j + oldcap 位置上
+                    // e.hash = 3 的情况下 hash & (n - 1) 与 hash & (2 * n - 1) 保持原位
+                    // e.hash = 19 的情况下 hash & (n - 1) 与 hash & (2 * n - 1) 移动了16长度
                     newTab[e.hash & (newCap - 1)] = e;
                 else if (e instanceof TreeNode)
                     // 使用红黑树的方式 分裂成低阶树或退化为链表
