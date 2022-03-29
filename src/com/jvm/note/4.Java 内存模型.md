@@ -4,7 +4,7 @@ JVM规范定义一种Java内存模型(Java Memory Model, JMM)来屏蔽各种硬�
 
 JMM的主要目标是定义程序中各个变量的访问规则，即在JVM中将变量存储到内存和从内存中取出变量这样的底层细节，如下图所示
 
-![JMM](JMM.PNG)
+![JMM](../pic/JMM.PNG)
 
 内存间相互操作，Java定义了如下八种操作来完成：
 

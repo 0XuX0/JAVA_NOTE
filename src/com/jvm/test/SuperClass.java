@@ -1,4 +1,4 @@
-package com.jvm.note;
+package com.jvm.test;
 
 /**
  * @ClassName SuperClass

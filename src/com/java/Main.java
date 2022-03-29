@@ -1,4 +1,4 @@
-package com.java.note;
+package com.java;
 
 import java.util.ArrayList;
 import java.util.Iterator;
