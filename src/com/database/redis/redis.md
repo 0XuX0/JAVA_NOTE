@@ -27,49 +27,11 @@ Redis是一个使用C语言开发的内存数据库，读写速度非常快，�
 1. 高性能：内存的读速度远大于磁盘IO读取
 2. 高并发：MySQL的qps大概在1w左右，Redis可以很容易达到10w+
 
-### Redis常见的数据结构
+### Redis 为什么这么快
 
-#### String
-
-1. 介绍：String 数据结构是简单的 key-value 类型。Redis自己构建了一种 **简单动态字符串** (simple dynamic string，SDS)。相比于C的原生字符串，Redis的SDS不光可以保存文本数据还可以保存二进制数据，并且获取字符串长度复杂度为O(1)(C字符串为O(N))。SDS的api是安全的，不会造成缓冲区溢出
-
-   SDS的优点：1.O(1)时间复杂度获取字符串长度 2.类似于ArrayList有空间预分配，增长或缩短字符串不需要在内存重新分配。
-
-2. 常用命令：set get strlen exists dect incr setex 等
-
-3. 应用场景：计数场景，比如用户的访问次数、热点文章点赞转发数量
-
-#### List
-
-1. 介绍：list即链表。Redis实现了自己的链表数据结构 -- 双向链表，即可以支持反向查找和遍历，更方便操作，不过带来了部分额外的内存开销
-2. 常用命令：rpush lpop lpush rpop lrange llen 等
-3. 应用场景：发布于订阅模式、实现队列栈等
-
-#### hash
-
-1. 介绍：类似JDK1.8前的HashMap，hash是一个String类型的field和value的映射表，适合存储对象
-2. 常用命令：hset hmset hexists hget hgetall hkeys hvalues
-3. 应用场景：系统中对象数据的存储
-
-#### set
-
-1. 介绍：类似于Java的HashSet
-2. 常用命令：sadd spop smembers sismember scard sinterstore sunion 等
-3. 应用场景：需要存放数据不能重复及需要获取多个数据源交集和并集等场景
-
-#### zset (sorted set)
-
-1. 介绍：和set相比，zset增加了一个权重参数score，使得集合中的元素能够按照score进行有序排列，还可以通过score的范围来获取元素的列表
-2. 常用命令：zadd zcard zscore zrange zrevrange zrem 等
-3. 应用场景：需要对数据根据某个权重进行排序的场景。
-
-底层数据结构是跳表(Skip List)
-
-#### bitmap
-
-1. bitmap存储的是连续的二进制数字，通过bitmap，只需要一个bit位来表示某个元素对应的值或状态，key就是对应元素本身。能够极大的节省存储空间
-2. 常用命令：setbit getbit bitcount bitop
-3. 应用场景：适合需要保存状态(比如是否签到、是否登陆)
+1. 高效的数据结构
+2. 基于内存
+3. I/O多路复用模型
 
 ### Redis给缓存数据设置过期时间的作用
 
@@ -148,8 +110,8 @@ https://www.cnblogs.com/javazhiyin/p/10823768.html
 
 解决方案：
 
-+ 事前：Redis高可用，主从 + 哨兵， Redis cluster，避免全盘崩溃
-+ 事中：本地缓存 + hystrix限流&降级，避免数据库被打死
++ 事前：Redis高可用，主从 + 哨兵， Redis cluster，将数据均匀分布到不同节点，避免全盘崩溃
++ 事中：本地缓存 + hystrix限流&降级，避免数据库被打死 或者 key的时间加随机值
 + 事后：Redis持久化
 
 ### 缓存穿透
@@ -163,7 +125,7 @@ https://www.cnblogs.com/javazhiyin/p/10823768.html
 
 ### 缓存击穿
 
-现象：热点数据在失效的瞬间，大量的请求就击穿了缓存
+现象：少量的热点数据在失效的瞬间，大量的请求就击穿了缓存
 
 解决方案：
 
