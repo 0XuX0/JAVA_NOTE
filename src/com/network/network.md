@@ -37,7 +37,7 @@ UDP(User Datagram Protocol)：一种简单的面向数据报的运输层协议�
 + 服务端-发送带有SYN/ACK标志的数据包
 + 客户端-发送带有ACK标志的数据包
 
-![三次握手](D:\Git\JAVA_NOTE\src\com\network\pic\三次握手.png)
+![三次握手](pic/三次握手.png)
 
 #### 四次挥手
 

@@ -4,6 +4,8 @@
 
 Spring Cloud 是微服务系统架构的一站式解决方案，为分布式系统模式提供了一种简单且易于接收的编程模型，帮助开发人员构建有弹性的、可靠的、协调的应用程序。Spring Cloud 构建于 Spring Boot之上，轻松地实现微服务项目的构建
 
+![springcloud架构图](pic/springcloud架构图.png)
+
 + Eureka 服务发现框架
 + Ribbon 进程内负载均衡器
 + Open Feign 服务调用映射

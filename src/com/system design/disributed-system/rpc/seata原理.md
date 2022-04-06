@@ -12,7 +12,7 @@ XA的两阶段提交分为Prepare阶段和Commit阶段：
 1. 准备(prepare)阶段。即所有的RM锁住需要的资源，在本地执行这个事务(执行sql，写redo/undo log等)，但不提交，然后向TM报告已准备就绪
 2. 提交(commit)阶段。当TM确认所有参与者都ready后，向所有参与者发送commit命令。
 
-![XA](pic\XA.PNG)
+![XA](pic/XA.PNG)
 
 #### XA方案存在的问题
 
@@ -41,7 +41,7 @@ Seata的分布式事务解决方案是业务层面的解决方案，只依赖于
 + RM(Resource Manager) ：控制分支事务，负责分支注册、状态汇报，并接收事务协调器的指令，驱动分支事务的提交和回滚
 + TM(Transaction Manager) ：控制全局事务的边界，负责开启一个全局事务，并最终发起全局提交或全局回滚的决议
 
-![seata](pic\seata.PNG)
+![seata](pic/seata.PNG)
 
 分布式事务在Seata中的执行流程：
 
@@ -69,20 +69,20 @@ Seata能够在第一阶段直接提交事务，是因为Seata框架为每一个R
 
 + AT模式：业务逻辑不需要关注事务机制，分支与全局事务的交互过程自动进行
 
-  ![AT](pic\AT.png)
+  ![AT](pic/AT.png)
 
 + MT模式：业务逻辑需要被分解为 Prepare/Commit/Rollback 3 部分，形成一个MT分支，加入全局事务
 
-  ![MT](pic\MT.png)
+  ![MT](pic/MT.png)
 
 #### XA和Seata AT的对比
 
-![XA和Seata](pic\XA和Seata.PNG)
+![XA和Seata](pic/XA和Seata.PNG)
 
 XA方案的RM实际上是在数据库层，RM本质上就是数据库自身。而Seata的RM是以二方包的形式作为中间件层部署在应用程序侧，不依赖与数据库本身对协议的支持，当然也不需要数据库支持XA协议。
 
 XA方案无论Phase2的决议是commit还是rollback，事务性资源的锁都要保持到Phase2完成才能释放。而对于Seata，将锁分为了本地锁和全局锁，本地锁由本地事务管理，在分支事务Phase1结束时就直接释放。而全局锁由TC管理，在决议Phase2全局提交时，可以释放。
 
-![XA锁资源](pic\XA锁资源.PNG)
+![XA锁资源](pic/XA锁资源.PNG)
 
-![Seata锁资源](pic\Seata锁资源.PNG)
+![Seata锁资源](pic/Seata锁资源.PNG)

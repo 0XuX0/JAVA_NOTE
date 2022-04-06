@@ -1,5 +1,30 @@
 ## Spring相关面试问题
 
+### IOC
+
+IOC(Inverse of Control)是一种设计思想，将原来在程序中手动创建对象的控制权交给Spring框架管理。  
+IOC容器就像一个工厂，当需要创建一个对象时，只需要配置好配置文件/注解即可，完全不需要考虑对象是如何被创建出来的。
+
+![spring ioc流程](../pic/spring ioc流程.png)
+
+### DI
+
+DI(Dependency injection)是把bean添加到IOC容器的一种方式
+
+#### 注入方式
++ Setter注入
++ 构造器注入
++ 方法注入
+    + @Autowired 是Spring自带的注解,依照类型进行装配
+    + @Bean 产生一个Bean对象，然后这个Bean对象交给Spring管理
+    + Resource 是JavaEE的标准，Spring对它是兼容性的支持，依照名称进行装配
+
+
+### AOP
+
+AOP(Aspect-Oriented Programming)的思想是将业务无关的，负责公共逻辑的代码进行封装，减少重复代码，降低耦合，利于可扩展性和可维护性。  
+Spring AOP是基于JDK Proxy 和 Cglib 实现的。
+
 ### bean的作用域
 
 + singleton：唯一bean实例，Spring中的bean默认都是单例的
@@ -29,6 +54,8 @@ Bean的生命周期指的就是在上面三个步骤中后置处理器BeanPostPr
 
 ### bean的生命周期
 
+![spring bean生命周期](../pic/spring bean生命周期.png)
+
 + Bean 容器找到配置文件中 Spring Bean 的定义
 + 若有和加载这个Bean的Spring容器相关的 **InstantiationAwareBeanPostProcessor** 对象，执行postProcessBeforeInstantiation 方法
 + Bean 容器利用 反射机制创建一个Bean的实例
@@ -39,6 +66,8 @@ Bean的生命周期指的就是在上面三个步骤中后置处理器BeanPostPr
 + bean的初始化，调用 afterPropertyesSet() 方法
 + 执行 BeanPostProcessor 对象的 postProcessAfterInitialization 方法
 
+![spring bean生命周期简化](../pic/spring bean生命周期简化.png)
+
 ### @Component 和 @Bean的区别是什么
 
 1. 作用对象不同：@Component 注解作用于类，@Bean 注解作用于方法
@@ -47,7 +76,7 @@ Bean的生命周期指的就是在上面三个步骤中后置处理器BeanPostPr
 
    @Bean 注解通常是我们在标有该注解的方法中定义产生这个bean
 
-3. @Bean注解比@Component注解的自定义性更强
+3. @Bean注解比@Component注解的自定义性更强。当需引用三方库的类装配到容器中时，只能用@Bean
 
 ### spring循环依赖问题
 
@@ -127,3 +156,7 @@ Spring事务的事务传播行为
 + TransactionDefinition.PROPAGATION_REQUIRES_NEW：创建一个新的事务，如果当前存在事务，则把当前事务挂起
 + TransactionDefinition.PROPAGATION_NOT_SUPPORTED：以非事务方式运行，如果当前存在事务，则把当前事务挂起
 + TransactionDefinition.PROPAGATION_NEVER：以非事务方式运行，如果当前存在事务，则抛出异常
+
+TransactionDefinition.PROPAGATION_NESTED：如果当前存在事务，则创建一个事务作为当前事务的嵌套子事务，如果当前没有事务，则等价于REQUIRED
+
+@TransactionDefinition(rollbackFor = Exception.class), 默认是RuntimeException才触发回滚
